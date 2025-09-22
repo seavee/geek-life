@@ -163,7 +163,7 @@ func prepareContentPages() *tview.Flex {
 
 func makeTitleBar() *tview.Flex {
 	titleText := tview.NewTextView()
-	titleText.SetText("[lime::b]geek-life")
+	titleText.SetText("[lime::b]Geek-Life")
 	titleText.SetDynamicColors(true)
 	titleText.SetBackgroundColor(tcell.NewHexColor(0x0c0c0c))
 	titleText.SetTextAlign(tview.AlignLeft)

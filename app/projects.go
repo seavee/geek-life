@@ -32,18 +32,24 @@ type ProjectPane struct {
 	projects            []model.Project
 	list                *tview.List
 	newProject          *tview.InputField
+	renameInput         *tview.InputField
 	repo                repository.ProjectRepository
 	activeProject       *model.Project
 	projectListStarting int // The index in list where project names starts
+	renameMode          bool             // 是否处于重命名模式
+	renameIndex         int              // 正在重命名的项目索引
 }
 
 // NewProjectPane initializes
 func NewProjectPane(repo repository.ProjectRepository) *ProjectPane {
 	pane := ProjectPane{
-		Flex:       tview.NewFlex().SetDirection(tview.FlexRow),
-		list:       tview.NewList().ShowSecondaryText(false),
-		newProject: makeLightTextInput("+[New Project]"),
-		repo:       repo,
+		Flex:        tview.NewFlex().SetDirection(tview.FlexRow),
+		list:        tview.NewList().ShowSecondaryText(false),
+		newProject:  makeLightTextInput("+[New Project]"),
+		renameInput: makeLightTextInput("Rename Project"),
+		repo:        repo,
+		renameMode:  false,
+		renameIndex: -1,
 	}
 	
 	// 设置项目列表背景色和文字色
@@ -58,6 +64,15 @@ func NewProjectPane(repo repository.ProjectRepository) *ProjectPane {
 		case tcell.KeyEsc:
 			pane.newProject.SetText("")
 			app.SetFocus(projectPane)
+		}
+	})
+
+	pane.renameInput.SetDoneFunc(func(key tcell.Key) {
+		switch key {
+		case tcell.KeyEnter:
+			pane.finishRenaming()
+		case tcell.KeyEsc:
+			pane.cancelRenaming()
 		}
 	})
 
@@ -186,7 +201,15 @@ func (pane *ProjectPane) addProjectsByYear() {
 
 func (pane *ProjectPane) addProjectToList(i int, selectItem bool) {
 	// To avoid overriding of loop variables - https://www.calhoun.io/gotchas-and-common-mistakes-with-closures-in-go/
-	pane.list.AddItem("  • "+pane.projects[i].Title, "", 0, func(idx int) func() {
+	// 根据项目工作状态选择显示符号
+	var symbol string
+	if pane.projects[i].Working {
+		symbol = "  [orange]★[-] " // 橙色星号表示正在工作，[-]恢复默认颜色，添加空格间距
+	} else {
+		symbol = "  • " // 普通圆点，添加空格间距
+	}
+	
+	pane.list.AddItem(symbol+pane.projects[i].Title, "", 0, func(idx int) func() {
 		return func() { pane.activateProject(idx) }
 	}(i))
 
@@ -197,7 +220,21 @@ func (pane *ProjectPane) addProjectToList(i int, selectItem bool) {
 }
 
 func (pane *ProjectPane) addSection(name string) {
-	pane.list.AddItem("[gray]  "+name, "", 0, nil)
+	var handler func()
+	// 检查是否是年份分组
+	if len(name) == 4 && name >= "2000" && name <= "2999" {
+		// 年份分组可以点击，加载该年份的所有任务
+		handler = func() {
+			year := name
+			pane.loadTasksByYear(year)
+		}
+		// 年份使用加粗样式，使其更突出
+		pane.list.AddItem("[::b]  "+name, "", 0, handler)
+	} else {
+		// 其他分组不可点击
+		pane.list.AddItem("[gray]  "+name, "", 0, nil)
+	}
+	
 	// 只有Dynamic Lists和Projects需要横线，年份组不需要
 	if name == "Dynamic Lists" || name == "Projects" {
 		pane.list.AddItem("[gray]  "+strings.Repeat("─", 25), "", 0, nil)
@@ -205,6 +242,11 @@ func (pane *ProjectPane) addSection(name string) {
 }
 
 func (pane *ProjectPane) handleShortcuts(event *tcell.EventKey) *tcell.EventKey {
+	// 如果处于重命名模式，不处理其他快捷键
+	if pane.renameMode {
+		return event
+	}
+
 	switch unicode.ToLower(event.Rune()) {
 	case 'j':
 		pane.list.SetCurrentItem(pane.list.GetCurrentItem() + 1)
@@ -214,6 +256,12 @@ func (pane *ProjectPane) handleShortcuts(event *tcell.EventKey) *tcell.EventKey 
 		return nil
 	case 'n':
 		app.SetFocus(pane.newProject)
+		return nil
+	case 'r':
+		pane.startRenaming()
+		return nil
+	case 'b':
+		pane.toggleWorkingStatus()
 		return nil
 	}
 
@@ -227,7 +275,8 @@ func (pane *ProjectPane) activateProject(idx int) {
 	removeThirdCol()
 	projectDetailPane.SetProject(pane.activeProject)
 	contents.AddItem(projectDetailPane, 25, 0, false)
-	app.SetFocus(taskPane)
+	// 保持焦点在项目面板，这样用户点击项目后可以直接按 'r' 重命名
+	app.SetFocus(pane)
 }
 
 // RemoveActivateProject deletes the currently active project
@@ -260,4 +309,211 @@ func (pane *ProjectPane) loadListItems(focus bool) {
 // GetActiveProject provides pointer to currently active project
 func (pane *ProjectPane) GetActiveProject() *model.Project {
 	return pane.activeProject
+}
+
+// startRenaming 开始重命名当前选中的项目
+func (pane *ProjectPane) startRenaming() {
+	currentItem := pane.list.GetCurrentItem()
+	
+	// 检查当前选中的是否是项目（不是动态列表或分隔符）
+	if currentItem < pane.projectListStarting {
+		statusBar.showForSeconds("[red::]Please select a project to rename", 3)
+		return
+	}
+	
+	// 找到对应的项目索引
+	projectIndex := pane.findProjectIndexByListItem(currentItem)
+	if projectIndex == -1 {
+		return
+	}
+	
+	// 设置重命名模式
+	pane.renameMode = true
+	pane.renameIndex = projectIndex
+	
+	// 设置输入框的当前文本为项目名称
+	pane.renameInput.SetText(pane.projects[projectIndex].Title)
+	
+	// 替换输入框显示
+	pane.RemoveItem(pane.newProject)
+	pane.AddItem(pane.renameInput, 1, 0, false)
+	
+	// 焦点转到重命名输入框
+	app.SetFocus(pane.renameInput)
+	
+	statusBar.showForSeconds("[yellow::]Renaming mode: Edit name and press Esc to save, or Esc to cancel", 5)
+}
+
+// finishRenaming 完成重命名操作
+func (pane *ProjectPane) finishRenaming() {
+	if !pane.renameMode || pane.renameIndex == -1 {
+		return
+	}
+	
+	newName := pane.renameInput.GetText()
+	if len(newName) < 3 {
+		statusBar.showForSeconds("[red::]Project name should be at least 3 characters", 5)
+		return
+	}
+	
+	// 更新项目名称
+	pane.projects[pane.renameIndex].Title = newName
+	err := pane.repo.Update(&pane.projects[pane.renameIndex])
+	if err != nil {
+		statusBar.showForSeconds("[red::]Failed to rename project: "+err.Error(), 5)
+		pane.cancelRenaming()
+		return
+	}
+	
+	// 显示成功消息
+	statusBar.showForSeconds(fmt.Sprintf("[yellow::]Project renamed to '%s'", newName), 5)
+	
+	// 重新加载列表
+	pane.loadListItems(true)
+	
+	// 选中刚才重命名的项目
+	pane.selectProjectByName(newName)
+	pane.exitRenameMode()
+}
+
+// cancelRenaming 取消重命名操作
+func (pane *ProjectPane) cancelRenaming() {
+	pane.exitRenameMode()
+	app.SetFocus(pane)
+}
+
+// exitRenameMode 退出重命名模式
+func (pane *ProjectPane) exitRenameMode() {
+	pane.renameMode = false
+	pane.renameIndex = -1
+	
+	// 恢复原来的输入框
+	pane.RemoveItem(pane.renameInput)
+	pane.AddItem(pane.newProject, 1, 0, false)
+	pane.renameInput.SetText("")
+}
+
+// findProjectIndexByListItem 根据列表项索引找到对应的项目索引
+func (pane *ProjectPane) findProjectIndexByListItem(listIndex int) int {
+	// 获取当前选中项的文本
+	main, _ := pane.list.GetItemText(listIndex)
+	
+	// 移除调试信息
+	
+	// 简化检查：只要包含项目符号就认为是项目
+	if !strings.Contains(main, "•") && !strings.Contains(main, "⚡") && !strings.Contains(main, "·") && !strings.Contains(main, "★") {
+		statusBar.showForSeconds("[red::]Please select a project (not a section or empty line)", 3)
+		return -1
+	}
+	
+	// 提取项目名称，通过找到符号位置来提取（考虑符号后可能有空格）
+	var projectName string
+	if idx := strings.Index(main, "★"); idx != -1 {
+		projectName = strings.TrimSpace(main[idx+len("★"):])
+	} else if idx := strings.Index(main, "⚡"); idx != -1 {
+		projectName = strings.TrimSpace(main[idx+len("⚡"):])
+	} else if idx := strings.Index(main, "•"); idx != -1 {
+		projectName = strings.TrimSpace(main[idx+len("•"):])
+	} else if idx := strings.Index(main, "·"); idx != -1 {
+		projectName = strings.TrimSpace(main[idx+len("·"):])
+	}
+	
+	// 在项目列表中查找匹配的项目
+	for j, project := range pane.projects {
+		if project.Title == projectName {
+			return j
+		}
+	}
+	
+	statusBar.showForSeconds("[red::]Project not found", 3)
+	return -1
+}
+
+// selectProjectByName 在列表中选中指定名称的项目
+func (pane *ProjectPane) selectProjectByName(projectName string) {
+	// 遍历列表项，寻找匹配的项目名称
+	for i := 0; i < pane.list.GetItemCount(); i++ {
+		main, _ := pane.list.GetItemText(i)
+		
+		// 检查是否是项目项且名称匹配（考虑不同的符号格式）
+		if (strings.Contains(main, "•") || strings.Contains(main, "⚡") || strings.Contains(main, "·") || strings.Contains(main, "★")) && i >= pane.projectListStarting {
+			var itemProjectName string
+			if idx := strings.Index(main, "★"); idx != -1 {
+				itemProjectName = strings.TrimSpace(main[idx+len("★"):])
+			} else if idx := strings.Index(main, "⚡"); idx != -1 {
+				itemProjectName = strings.TrimSpace(main[idx+len("⚡"):])
+			} else if idx := strings.Index(main, "•"); idx != -1 {
+				itemProjectName = strings.TrimSpace(main[idx+len("•"):])
+			} else if idx := strings.Index(main, "·"); idx != -1 {
+				itemProjectName = strings.TrimSpace(main[idx+len("·"):])
+			}
+			if itemProjectName == projectName {
+				pane.list.SetCurrentItem(i)
+				return
+			}
+		}
+	}
+}
+
+// toggleWorkingStatus 切换当前选中项目的工作状态
+func (pane *ProjectPane) toggleWorkingStatus() {
+	currentItem := pane.list.GetCurrentItem()
+	
+	// 移除调试信息
+	
+	// 找到对应的项目索引（findProjectIndexByListItem 内部会检查是否为有效项目）
+	projectIndex := pane.findProjectIndexByListItem(currentItem)
+	if projectIndex == -1 {
+		return
+	}
+	
+	// 如果要设置为工作状态，先清除其他项目的工作状态（确保只有一个项目处于工作中）
+	if !pane.projects[projectIndex].Working {
+		for i := range pane.projects {
+			if pane.projects[i].Working {
+				pane.projects[i].Working = false
+				err := pane.repo.Update(&pane.projects[i])
+				if err != nil {
+					statusBar.showForSeconds("[red::]Failed to update project: "+err.Error(), 5)
+					return
+				}
+			}
+		}
+	}
+	
+	// 切换当前项目的工作状态
+	pane.projects[projectIndex].Working = !pane.projects[projectIndex].Working
+	err := pane.repo.Update(&pane.projects[projectIndex])
+	if err != nil {
+		statusBar.showForSeconds("[red::]Failed to update project: "+err.Error(), 5)
+		return
+	}
+	
+	// 显示状态消息
+	projectName := pane.projects[projectIndex].Title
+	if pane.projects[projectIndex].Working {
+		statusBar.showForSeconds(fmt.Sprintf("[green::]'%s' is now your working project ⚡", projectName), 5)
+	} else {
+		statusBar.showForSeconds(fmt.Sprintf("[yellow::]'%s' is no longer your working project", projectName), 5)
+	}
+	
+	// 重新加载列表并保持选中当前项目
+	pane.loadListItems(true)
+	pane.selectProjectByName(projectName)
+}
+
+// loadTasksByYear 按年份加载所有相关任务
+func (pane *ProjectPane) loadTasksByYear(year string) {
+	// 清除当前活动项目
+	pane.activeProject = nil
+	removeThirdCol()
+	
+	// 在TaskPane中加载该年份的所有任务
+	taskPane.LoadTasksByYear(year)
+	
+	// 切换焦点到任务面板
+	app.SetFocus(taskPane)
+	
+	// 显示状态消息
+	statusBar.showForSeconds(fmt.Sprintf("[yellow::]Displaying all tasks for year %s", year), 5)
 }

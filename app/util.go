@@ -259,6 +259,11 @@ func ignoreKeyEvt() bool {
 		return true
 	}
 	
+	// 检查项目重命名输入框
+	if projectPane != nil && projectPane.renameInput != nil && projectPane.renameInput.HasFocus() {
+		return true
+	}
+	
 	// 检查任务输入框
 	if taskPane != nil && taskPane.newTask != nil && taskPane.newTask.HasFocus() {
 		return true
@@ -300,11 +305,11 @@ func removeThirdCol() {
 
 func getTaskTitleColor(task model.Task) string {
 	if task.Completed {
-		// 已完成任务使用 #797a12
-		return "#797a12"
+		// 已完成任务使用 #3C8100
+		return "#3C8100"
 	} else {
-		// 未完成任务统一使用 #7DEF1A，不受截止日期影响
-		return "#7DEF1A"
+		// 未完成任务统一使用 #51AD00，不受截止日期影响
+		return "#51AD00"
 	}
 }
 

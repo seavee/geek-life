@@ -28,10 +28,16 @@ func NewProjectDetailPane() *ProjectDetailPane {
 	pane := ProjectDetailPane{
 		Flex: tview.NewFlex().SetDirection(tview.FlexRow),
 	}
-	deleteBtn := makeButton("Delete Project", removeProjectWithConfirmation)
-	clearBtn := makeButton("Clear Completed Tasks", clearCompletedWithConfirmation)
-
+	// 创建红色的删除按钮 - 尝试不同的设置方式
+	deleteBtn := tview.NewButton("Delete Project")
+	deleteBtn.SetSelectedFunc(removeProjectWithConfirmation)
+	deleteBtn.SetLabelColor(tcell.ColorWhite)
+	// 强制设置按钮的样式
+	deleteBtn.SetStyle(tcell.StyleDefault.Background(tcell.ColorRed).Foreground(tcell.ColorWhite))
 	deleteBtn.SetBackgroundColor(tcell.ColorRed)
+	deleteBtn.SetBorder(false)
+	
+	clearBtn := makeButton("Clear Completed Tasks", clearCompletedWithConfirmation)
 	pane.
 		AddItem(deleteBtn, 3, 1, false).
 		AddItem(blankCell, 1, 1, false).

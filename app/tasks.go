@@ -223,6 +223,104 @@ func (pane *TaskPane) ReloadCurrentTask() {
 	taskDetailPane.SetTask(pane.activeTask)
 }
 
+// LoadTasksByYear 按年份加载所有相关任务，按项目分组显示
+func (pane *TaskPane) LoadTasksByYear(year string) {
+	// 清除当前任务列表和活动任务
+	pane.ClearList()
+	
+	// 获取所有项目
+	allProjects, err := pane.projectRepo.GetAll()
+	if err != nil {
+		statusBar.showForSeconds("[red::]Error loading projects: "+err.Error(), 5)
+		return
+	}
+	
+	// 筛选该年份的项目和任务
+	var yearTasks []model.Task
+	projectTaskMap := make(map[string][]model.Task) // 项目名称 -> 任务列表
+	
+	for _, project := range allProjects {
+		tasks, err := pane.taskRepo.GetAllByProject(project)
+		if err != nil {
+			continue
+		}
+		
+		// 筛选该年份的任务
+		var projectYearTasks []model.Task
+		for _, task := range tasks {
+			if task.DueDate > 0 {
+				taskYear := time.Unix(task.DueDate, 0).Year()
+				if fmt.Sprintf("%d", taskYear) == year {
+					projectYearTasks = append(projectYearTasks, task)
+					yearTasks = append(yearTasks, task)
+				}
+			}
+		}
+		
+		// 如果该项目有该年份的任务，加入映射
+		if len(projectYearTasks) > 0 {
+			projectTaskMap[project.Title] = projectYearTasks
+		}
+	}
+	
+	// 按项目分组显示任务
+	pane.displayTasksByYear(year, projectTaskMap)
+	
+	pane.RemoveItem(pane.hint)
+	removeThirdCol()
+}
+
+// displayTasksByProject 按项目分组显示任务
+func (pane *TaskPane) displayTasksByYear(year string, projectTaskMap map[string][]model.Task) {
+	pane.list.Clear()
+	pane.tasks = nil
+	
+	// 添加年份标题（加粗显示，使用默认颜色）
+	pane.list.AddItem(fmt.Sprintf("[::b]%s", year), "", 0, nil)
+	pane.list.AddItem("", "", 0, nil) // 空行
+	
+	// 按项目名称排序
+	var projectNames []string
+	for projectName := range projectTaskMap {
+		projectNames = append(projectNames, projectName)
+	}
+	sort.Strings(projectNames)
+	
+	// 为每个项目显示任务
+	for i, projectName := range projectNames {
+		tasks := projectTaskMap[projectName]
+		
+		// 添加项目名称（加粗显示，使用默认颜色）
+		pane.list.AddItem(fmt.Sprintf("[::b]%s", projectName), "", 0, nil)
+		
+		// 按日期排序任务
+		sort.Slice(tasks, func(i, j int) bool {
+			return tasks[i].DueDate < tasks[j].DueDate
+		})
+		
+		// 添加任务
+		for _, task := range tasks {
+			// 保存任务到列表中
+			pane.tasks = append(pane.tasks, task)
+			taskIndex := len(pane.tasks) - 1
+			
+			// 添加任务项
+			pane.list.AddItem(makeTaskListingTitle(task), "", 0, func(idx int) func() {
+				return func() { pane.ActivateTask(idx) }
+			}(taskIndex))
+		}
+		
+		// 在项目之间添加空行（除了最后一个项目）
+		if i < len(projectNames)-1 {
+			pane.list.AddItem("", "", 0, nil)
+		}
+	}
+	
+	if len(pane.tasks) == 0 {
+		pane.list.AddItem("[yellow]No tasks found for this year", "", 0, nil)
+	}
+}
+
 func (pane TaskPane) setHintMessage() {
 	if len(projectPane.projects) == 0 {
 		pane.hint.SetText("Welcome to the organized life!\n------------------------------\n Create TaskList/Project at the bottom of Projects pane.\n (Press p,n) \n\nHelp - https://bit.ly/cli-task")
