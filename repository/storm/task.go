@@ -56,6 +56,30 @@ func (t *taskRepository) GetAllByDateRange(from, to time.Time) ([]model.Task, er
 	return tasks, err
 }
 
+func (t *taskRepository) GetAllCompletedByDate(date time.Time) ([]model.Task, error) {
+	var tasks []model.Task
+	
+	// 获取指定日期的开始和结束时间戳
+	startOfDay := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location()).Unix()
+	endOfDay := time.Date(date.Year(), date.Month(), date.Day(), 23, 59, 59, 999999999, date.Location()).Unix()
+	
+	// 查询在指定日期内完成的任务
+	err := t.DB.Range("CompletedAt", startOfDay, endOfDay, &tasks)
+	if err != nil {
+		return tasks, err
+	}
+	
+	// 过滤确保任务确实是已完成的
+	var completedTasks []model.Task
+	for _, task := range tasks {
+		if task.Completed && task.CompletedAt >= startOfDay && task.CompletedAt <= endOfDay {
+			completedTasks = append(completedTasks, task)
+		}
+	}
+	
+	return completedTasks, nil
+}
+
 func (t *taskRepository) GetByID(ID string) (model.Task, error) {
 	panic("implement me")
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -24,24 +25,29 @@ const (
 var restorInQ = 0
 
 func prepareStatusBar(app *tview.Application) *StatusBar {
+	messageView := tview.NewTextView().SetDynamicColors(true).SetText("Loading...")
+	messageView.SetBackgroundColor(tcell.NewHexColor(0x0c0c0c))
+	
+	pages := tview.NewPages()
+	pages.SetBackgroundColor(tcell.NewHexColor(0x0c0c0c))
+	
 	statusBar = &StatusBar{
-		Pages:     tview.NewPages(),
-		message:   tview.NewTextView().SetDynamicColors(true).SetText("Loading..."),
+		Pages:     pages,
+		message:   messageView,
 		container: app,
 	}
 
 	statusBar.AddPage(messagePage, statusBar.message, true, true)
-	statusBar.AddPage(defaultPage,
-		tview.NewGrid(). // Content will not be modified, So, no need to declare explicitly
-					SetColumns(0, 0, 0, 0).
-					SetRows(0).
-					AddItem(tview.NewTextView().SetText("Navigate List: ↓,↑ / j,k"), 0, 0, 1, 1, 0, 0, false).
-					AddItem(tview.NewTextView().SetText("New Task/Project: n").SetTextAlign(tview.AlignCenter), 0, 1, 1, 1, 0, 0, false).
-					AddItem(tview.NewTextView().SetText("Step back: Esc").SetTextAlign(tview.AlignCenter), 0, 2, 1, 1, 0, 0, false).
-					AddItem(tview.NewTextView().SetText("Quit: Ctrl+C").SetTextAlign(tview.AlignRight), 0, 3, 1, 1, 0, 0, false),
-		true,
-		true,
-	)
+	grid := tview.NewGrid().
+		SetColumns(0, 0, 0, 0).
+		SetRows(0).
+		AddItem(tview.NewTextView().SetText("Navigate List: ↓,↑ / j,k").SetBackgroundColor(tcell.NewHexColor(0x0c0c0c)), 0, 0, 1, 1, 0, 0, false).
+		AddItem(tview.NewTextView().SetText("New Task/Project: n").SetTextAlign(tview.AlignCenter).SetBackgroundColor(tcell.NewHexColor(0x0c0c0c)), 0, 1, 1, 1, 0, 0, false).
+		AddItem(tview.NewTextView().SetText("Step back: Esc").SetTextAlign(tview.AlignCenter).SetBackgroundColor(tcell.NewHexColor(0x0c0c0c)), 0, 2, 1, 1, 0, 0, false).
+		AddItem(tview.NewTextView().SetText("Quit: Ctrl+C").SetTextAlign(tview.AlignRight).SetBackgroundColor(tcell.NewHexColor(0x0c0c0c)), 0, 3, 1, 1, 0, 0, false)
+	
+	grid.SetBackgroundColor(tcell.NewHexColor(0x0c0c0c))
+	statusBar.AddPage(defaultPage, grid, true, true)
 
 	return statusBar
 }

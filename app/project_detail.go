@@ -28,8 +28,8 @@ func NewProjectDetailPane() *ProjectDetailPane {
 	pane := ProjectDetailPane{
 		Flex: tview.NewFlex().SetDirection(tview.FlexRow),
 	}
-	deleteBtn := makeButton("[::u]D[::-]elete Project", removeProjectWithConfirmation)
-	clearBtn := makeButton("[::u]C[::-]lear Completed Tasks", clearCompletedWithConfirmation)
+	deleteBtn := makeButton("Delete Project", removeProjectWithConfirmation)
+	clearBtn := makeButton("Clear Completed Tasks", clearCompletedWithConfirmation)
 
 	deleteBtn.SetBackgroundColor(tcell.ColorRed)
 	pane.
@@ -38,7 +38,7 @@ func NewProjectDetailPane() *ProjectDetailPane {
 		AddItem(clearBtn, 3, 1, false).
 		AddItem(blankCell, 0, 1, false)
 
-	pane.SetBorder(true).SetTitle("[::u]A[::-]ctions")
+	pane.SetBorder(true).SetTitle("Actions").SetBackgroundColor(tcell.NewHexColor(0x0c0c0c))
 
 	return &pane
 }

@@ -40,6 +40,28 @@ func init() {
 
 func main() {
 	app = tview.NewApplication()
+	
+	// 设置全局主题：使用单线边框，但不强制背景色
+	blackColor := tcell.NewHexColor(0x0c0c0c)
+	tview.Styles.PrimitiveBackgroundColor = blackColor
+	// 不覆盖按钮和输入框的背景色设置
+	// tview.Styles.ContrastBackgroundColor = blackColor
+	// tview.Styles.MoreContrastBackgroundColor = blackColor
+	
+	// 设置边框为单线样式
+	tview.Borders.Horizontal = '─'
+	tview.Borders.Vertical = '│'
+	tview.Borders.TopLeft = '┌'
+	tview.Borders.TopRight = '┐'
+	tview.Borders.BottomLeft = '└'
+	tview.Borders.BottomRight = '┘'
+	tview.Borders.HorizontalFocus = '─'
+	tview.Borders.VerticalFocus = '│'
+	tview.Borders.TopLeftFocus = '┌'
+	tview.Borders.TopRightFocus = '┐'
+	tview.Borders.BottomLeftFocus = '└'
+	tview.Borders.BottomRightFocus = '┘'
+	
 	flag.Parse()
 
 	db = util.ConnectStorm(dbFile)
@@ -56,10 +78,16 @@ func main() {
 		projectRepo = repo.NewProjectRepository(db)
 		taskRepo = repo.NewTaskRepository(db)
 
+		titleBar := makeTitleBar()
+		contentPages := prepareContentPages()
+		statusBarPane := prepareStatusBar(app)
+		
 		layout = tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(makeTitleBar(), 2, 1, false).
-			AddItem(prepareContentPages(), 0, 2, true).
-			AddItem(prepareStatusBar(app), 1, 1, false)
+			AddItem(titleBar, 2, 0, false).
+			AddItem(contentPages, 0, 1, true).
+			AddItem(statusBarPane, 1, 0, false)
+		
+		layout.SetBackgroundColor(tcell.NewHexColor(0x0c0c0c))
 
 		setKeyboardShortcuts()
 
@@ -80,10 +108,12 @@ func migrate(database *storm.DB) {
 
 func setKeyboardShortcuts() *tview.Application {
 	return app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// 首先检查是否在输入框中，如果是则直接返回事件，屏蔽所有快捷键
 		if ignoreKeyEvt() {
 			return event
 		}
 
+		// 只有不在输入框时才处理快捷键
 		// Global shortcuts
 		switch unicode.ToLower(event.Rune()) {
 		case 'p':
@@ -91,6 +121,8 @@ func setKeyboardShortcuts() *tview.Application {
 			contents.RemoveItem(taskDetailPane)
 			return nil
 		case 'q':
+			// 退出功能
+			return nil
 		case 't':
 			app.SetFocus(taskPane)
 			contents.RemoveItem(taskDetailPane)
@@ -123,18 +155,33 @@ func prepareContentPages() *tview.Flex {
 	contents = tview.NewFlex().
 		AddItem(projectPane, 25, 1, true).
 		AddItem(taskPane, 0, 2, false)
-
+		
+	contents.SetBackgroundColor(tcell.NewHexColor(0x0c0c0c))
 	return contents
 
 }
 
 func makeTitleBar() *tview.Flex {
-	titleText := tview.NewTextView().SetText("[lime::b]Geek-life [::-]- Task Manager for geeks!").SetDynamicColors(true)
-	versionInfo := tview.NewTextView().SetText("[::d]Version: 0.1.2").SetTextAlign(tview.AlignRight).SetDynamicColors(true)
+	titleText := tview.NewTextView()
+	titleText.SetText("[lime::b]geek-life")
+	titleText.SetDynamicColors(true)
+	titleText.SetBackgroundColor(tcell.NewHexColor(0x0c0c0c))
+	titleText.SetTextAlign(tview.AlignLeft)
+	
+	versionInfo := tview.NewTextView()
+	versionInfo.SetText("[::d]Version: 0.1.2")
+	versionInfo.SetTextAlign(tview.AlignRight)
+	versionInfo.SetDynamicColors(true)
+	versionInfo.SetBackgroundColor(tcell.NewHexColor(0x0c0c0c))
 
-	return tview.NewFlex().
-		AddItem(titleText, 0, 2, false).
-		AddItem(versionInfo, 0, 1, false)
+	titleBar := tview.NewFlex()
+	titleBar.SetDirection(tview.FlexColumn)
+	titleBar.AddItem(titleText, 0, 2, false)
+	titleBar.AddItem(versionInfo, 0, 1, false)
+	titleBar.SetBackgroundColor(tcell.NewHexColor(0x0c0c0c))
+	titleBar.SetBorder(false)
+	
+	return titleBar
 }
 
 func AskYesNo(text string, f func()) {

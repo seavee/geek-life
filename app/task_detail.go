@@ -43,21 +43,34 @@ func NewTaskDetailPane(taskRepo repository.TaskRepository) *TaskDetailPane {
 		Flex:             tview.NewFlex().SetDirection(tview.FlexRow),
 		header:           NewTaskDetailHeader(taskRepo),
 		taskDateDisplay:  tview.NewTextView().SetDynamicColors(true),
-		taskStatusToggle: makeButton("Complete", nil).SetLabelColor(tcell.ColorLightGray),
+		taskStatusToggle: tview.NewButton("Complete"),
 		taskRepo:         taskRepo,
 	}
 
 	pane.prepareDetailsEditor()
 
 	toggleHint := tview.NewTextView().SetTextColor(tcell.ColorDimGray).SetText("<space> to toggle")
-	pane.taskStatusToggle.SetSelectedFunc(pane.toggleTaskStatus)
+	// 初始化按钮样式和事件
+	pane.taskStatusToggle.SetSelectedFunc(func() {
+		pane.toggleTaskStatus()
+	})
+	// 设置默认样式（未完成状态）
+	pane.taskStatusToggle.SetLabel("Complete")
+	pane.taskStatusToggle.SetLabelColor(tcell.ColorWhite)
+	pane.taskStatusToggle.SetBackgroundColor(tcell.ColorGreen)  // 绿色
+	pane.taskStatusToggle.SetBorder(false)
+	
+	// 强制设置样式
+	pane.taskStatusToggle.SetStyle(tcell.StyleDefault.
+		Background(tcell.ColorGreen).
+		Foreground(tcell.ColorWhite))
 
 	pane.editorHint = tview.NewTextView().SetText(" e = edit, v = external, ↓↑ = scroll").SetTextColor(tcell.ColorDimGray)
 
 	// Prepare static (no external interaction) elements
 	editorLabel := tview.NewFlex().
-		AddItem(tview.NewTextView().SetText("Task Not[::u]e[::-]:").SetDynamicColors(true), 0, 1, false).
-		AddItem(makeButton("[::u]e[::-]dit", func() { pane.activateEditor() }), 6, 0, false)
+		AddItem(tview.NewTextView().SetText("Task Note:").SetDynamicColors(true), 0, 1, false).
+		AddItem(makeButton("edit", func() { pane.activateEditor() }), 6, 0, false)
 	editorHelp := tview.NewFlex().
 		AddItem(pane.editorHint, 0, 1, false).
 		AddItem(tview.NewTextView().SetTextAlign(tview.AlignRight).
@@ -76,7 +89,7 @@ func NewTaskDetailPane(taskRepo repository.TaskRepository) *TaskDetailPane {
 		AddItem(toggleHint, 1, 1, false).
 		AddItem(pane.taskStatusToggle, 3, 1, false)
 
-	pane.SetBorder(true).SetTitle("Task Detail")
+	pane.SetBorder(true).SetTitle("Task Detail").SetBackgroundColor(tcell.NewHexColor(0x0c0c0c))
 
 	return &pane
 }
@@ -97,10 +110,14 @@ func (td *TaskDetailPane) Export() {
 
 func (td *TaskDetailPane) makeDateRow() *tview.Flex {
 
-	td.taskDate = makeLightTextInput("yyyy-mm-dd").
+	// 为日期输入框创建特殊样式
+	td.taskDate = tview.NewInputField().
+		SetPlaceholder("yyyy-mm-dd").
 		SetLabel("Set:").
 		SetLabelColor(tcell.ColorWhiteSmoke).
 		SetFieldWidth(12).
+		SetFieldTextColor(tcell.ColorWhite).
+		SetFieldBackgroundColor(tcell.ColorDarkSlateGray).  // 使用深灰色，不影响可见性
 		SetDoneFunc(func(key tcell.Key) {
 			switch key {
 			case tcell.KeyEnter:
@@ -116,25 +133,56 @@ func (td *TaskDetailPane) makeDateRow() *tview.Flex {
 		AddItem(td.taskDateDisplay, 0, 2, true).
 		AddItem(td.taskDate, 14, 0, true).
 		AddItem(blankCell, 1, 0, false).
-		AddItem(makeButton("t[::u]o[::-]day", td.todaySelector), 8, 1, false).
+		AddItem(makeButton("today", td.todaySelector), 8, 1, false).
 		AddItem(blankCell, 1, 0, false).
-		AddItem(makeButton("[::u]+[::-]1", td.nextDaySelector), 4, 1, false).
+		AddItem(makeButton("+1", td.nextDaySelector), 4, 1, false).
 		AddItem(blankCell, 1, 0, false).
-		AddItem(makeButton("[::u]-[::-]1", td.prevDaySelector), 4, 1, false)
+		AddItem(makeButton("-1", td.prevDaySelector), 4, 1, false)
 }
 
 func (td *TaskDetailPane) updateToggleDisplay() {
-	if td.task.Completed {
-		td.taskStatusToggle.SetLabel("Resume").SetBackgroundColor(tcell.ColorMaroon)
-	} else {
-		td.taskStatusToggle.SetLabel("Complete").SetBackgroundColor(tcell.ColorDarkGreen)
+	if td.task == nil {
+		return
 	}
+	
+	if td.task.Completed {
+		td.taskStatusToggle.SetLabel("Resume")
+		td.taskStatusToggle.SetBackgroundColor(tcell.ColorRed)  // 红色
+		td.taskStatusToggle.SetLabelColor(tcell.ColorWhite)
+		// 强制设置红色样式
+		td.taskStatusToggle.SetStyle(tcell.StyleDefault.
+			Background(tcell.ColorRed).
+			Foreground(tcell.ColorWhite))
+	} else {
+		td.taskStatusToggle.SetLabel("Complete")
+		td.taskStatusToggle.SetBackgroundColor(tcell.ColorGreen)  // 绿色
+		td.taskStatusToggle.SetLabelColor(tcell.ColorWhite)
+		// 强制设置绿色样式
+		td.taskStatusToggle.SetStyle(tcell.StyleDefault.
+			Background(tcell.ColorGreen).
+			Foreground(tcell.ColorWhite))
+	}
+	
+	td.taskStatusToggle.SetBorder(false)  // 去掉边框
 }
 
 func (td *TaskDetailPane) toggleTaskStatus() {
 	status := !td.task.Completed
-	if taskRepo.UpdateField(td.task, "Completed", status) == nil {
+	
+	// 如果任务正在被标记为完成，记录完成时间
+	var completedAt int64
+	if status {
+		completedAt = time.Now().Unix()
+	} else {
+		completedAt = 0 // 取消完成时清除完成时间
+	}
+	
+	// 同时更新完成状态和完成时间
+	if taskRepo.UpdateField(td.task, "Completed", status) == nil && 
+	   taskRepo.UpdateField(td.task, "CompletedAt", completedAt) == nil {
 		td.task.Completed = status
+		td.task.CompletedAt = completedAt
+		td.updateToggleDisplay() // 更新按钮显示
 		taskPane.ReloadCurrentTask()
 	}
 }
@@ -157,11 +205,11 @@ func (td *TaskDetailPane) setTaskDate(unixDate int64, update bool) {
 		if due.Before(time.Now()) {
 			color = "red"
 		}
-		td.taskDateDisplay.SetText(fmt.Sprintf("[::u]D[::-]ue: [%s]%s", color, humanDate))
+		td.taskDateDisplay.SetText(fmt.Sprintf("Due: [%s]%s", color, humanDate))
 		td.taskDate.SetText(due.Format(dateLayoutISO))
 	} else {
 		td.taskDate.SetText("")
-		td.taskDateDisplay.SetText("[::u]D[::-]ue: [::d]Not Set")
+		td.taskDateDisplay.SetText("Due: [::d]Not Set")
 	}
 }
 
@@ -180,6 +228,7 @@ func (td *TaskDetailPane) prepareDetailsEditor() {
 	td.taskDetailView.SetColorscheme(td.colorScheme)
 	td.taskDetailView.SetBorder(true)
 	td.taskDetailView.SetBorderColor(tcell.ColorLightSlateGray)
+	td.taskDetailView.SetBackgroundColor(tcell.NewHexColor(0x0c0c0c))
 
 	td.taskDetailView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
@@ -289,9 +338,10 @@ func writeToTmpFile(content string) (string, error) {
 func (td *TaskDetailPane) handleShortcuts(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
 	case tcell.KeyEsc:
-		removeThirdCol()
-		app.SetFocus(taskPane)
-		contents.AddItem(projectDetailPane, 25, 0, false)
+		// 移除ESC键关闭Task Detail的功能
+		// removeThirdCol()
+		// app.SetFocus(taskPane)
+		// contents.AddItem(projectDetailPane, 25, 0, false)
 		return nil
 	case tcell.KeyDown:
 		td.taskDetailView.ScrollDown(1)
@@ -343,7 +393,7 @@ func (td *TaskDetailPane) SetTask(task *model.Task) {
 	td.taskDetailView.SetColorscheme(td.colorScheme)
 	td.taskDetailView.Start()
 	td.setTaskDate(td.task.DueDate, false)
-	td.updateToggleDisplay()
+	td.updateToggleDisplay() // 确保按钮状态正确
 	td.deactivateEditor()
 }
 

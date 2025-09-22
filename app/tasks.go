@@ -38,7 +38,9 @@ func NewTaskPane(projectRepo repository.ProjectRepository, taskRepo repository.T
 		hint:        tview.NewTextView().SetTextColor(tcell.ColorYellow).SetTextAlign(tview.AlignCenter),
 	}
 
-	pane.list.SetSelectedBackgroundColor(tcell.ColorDarkBlue)
+	pane.list.SetSelectedBackgroundColor(tcell.ColorWhite)
+	pane.list.SetSelectedTextColor(tcell.ColorBlack)
+	pane.list.SetBackgroundColor(tcell.NewHexColor(0x0c0c0c))
 	pane.list.SetDoneFunc(func() {
 		app.SetFocus(projectPane)
 	})
@@ -49,6 +51,11 @@ func NewTaskPane(projectRepo repository.ProjectRepository, taskRepo repository.T
 			name := pane.newTask.GetText()
 			if len(name) < 3 {
 				statusBar.showForSeconds("[red::]Task title should be at least 3 character", 5)
+				return
+			}
+
+			if projectPane.GetActiveProject() == nil {
+				statusBar.showForSeconds("[red::]Please select a project first", 5)
 				return
 			}
 
@@ -63,15 +70,16 @@ func NewTaskPane(projectRepo repository.ProjectRepository, taskRepo repository.T
 			pane.newTask.SetText("")
 			statusBar.showForSeconds("[yellow::]Task created. Add another task or press Esc.", 5)
 		case tcell.KeyEsc:
+			pane.newTask.SetText("")
 			app.SetFocus(pane)
 		}
 	})
 
-	pane.
-		AddItem(pane.list, 0, 1, true).
-		AddItem(pane.hint, 0, 1, false)
+	// 初始布局
+	pane.AddItem(pane.list, 0, 1, true)
+	pane.AddItem(pane.hint, 0, 1, false)
 
-	pane.SetBorder(true).SetTitle("[::u]T[::-]asks")
+	pane.SetBorder(true).SetTitle("Tasks").SetBackgroundColor(tcell.NewHexColor(0x0c0c0c))
 	pane.setHintMessage()
 
 	return &pane
@@ -132,6 +140,7 @@ func (pane *TaskPane) LoadProjectTasks(project model.Project) {
 		pane.SetList(tasks)
 	}
 
+	// 输入框正常高度
 	pane.RemoveItem(pane.hint)
 	pane.AddItem(pane.newTask, 1, 0, false)
 }
@@ -147,8 +156,8 @@ func (pane *TaskPane) LoadDynamicList(logic string) {
 
 	switch logic {
 	case "today":
-		tasks, err = pane.taskRepo.GetAllByDateRange(zeroTime, today)
-		rangeDesc = "Today (and overdue)"
+		tasks, err = pane.taskRepo.GetAllByDate(today)
+		rangeDesc = "Today"
 
 	case "tomorrow":
 		tomorrow := today.AddDate(0, 0, 1)
